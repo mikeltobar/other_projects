@@ -17,7 +17,7 @@ To get better results, a selection of the variables has been performed.
 
 The goal of the analysis has been to compare different algorithms that don't need any alteration of the dataset's original non-numeric discrete nature of the variables.  It has been interesting to see how all of these give fairly similar accuracies of around 70%, which leaves room for improvement. Furthermore, the current approach seems to make the accuracy cap at 71.26. Therefore, in a future iteration of the analysis, some rethinking of it should be done, such as a transformation of the variables to numeric and scaling, or the addition of an unsupervised approach. Also, outliers might have had an impact in the final result, so these should be observed as well.
 
-<img src=["https://your-image-url.type](https://user-images.githubusercontent.com/81832365/218502106-4b5fc213-44d8-41af-b76a-c1c077918c53.jpg)" width="250" height="250">
+<img src="[https://user-images.githubusercontent.com/81832365/218502106-4b5fc213-44d8-41af-b76a-c1c077918c53.jpg]" width="250" height="250">
 ![9](https://user-images.githubusercontent.com/81832365/218502104-980a5a42-aa17-4583-90ef-535189e3ffe5.jpg)
 
 
