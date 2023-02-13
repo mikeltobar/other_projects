@@ -32,6 +32,13 @@ In order to comply with the Spanish data legislation, no details of the supermar
 | Fresh produce | Organic carrots 400 gr | 1.35 |
 | Meat and cheese | Sausages with cheddar cheese 3 x 150 gr | 3.15 |
 
+## Time series analysis
+
+This work analyzes a time series that shows airline users with a monthly granularity [2]. It is decomposed in the typical components of a time series to better understand the data's structure.
+
+Once the data is decomposed, a prediction of the last two years of the data can be made, along with a possible spectrum of that prediction in terms of max and min values.
+
+
 
 ## Bibliography
 
