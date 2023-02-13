@@ -1,0 +1,321 @@
+---
+always_allow_html: true
+title: "german_credit"
+output:
+  github_document:
+    pandoc_args: --webtex
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## Intro & goals
+
+In this study, the focus will be on generating and comprehending a decision tree using a dataset that provides information on credit admissions in Germany.
+
+The main goal of the analysis is to predict which combination of values most frequently lead to a default in the credit payment, getting a set of rules explaining those combinations.
+
+Another goal of the work will be to compare the performance of four different algorithms: a decision tree, a random forest, a Naive-Bayes classifier, and a logistic regression.
+
+We will work with algorithms that can handle non-numeric discrete observations, and test their limits. The possibilities of this type of algorithms for this kind of problem will be tested. We will compare each one's accuracy regarding this dataset.
+
+## 1. Initial data analysis
+
+```{r, warning=F, message=F}
+library("e1071")
+library("ggplot2")
+library("miscset")
+library("Boruta")
+library("dplyr")
+library("e1071")
+library("caret")
+library("randomForest")
+library("rpart")
+```
+
+Let's take a brief look at a sample of the data.
+
+```{r }
+credit <-read.csv("credit_kaggle.csv", TRUE, ",", fileEncoding = "UTF-8")
+head(credit,10)
+```
+
+We try to look at the column composition looking for empty values and the numeric information of each column.
+
+```{r }
+summary(credit)
+str(credit)
+```
+
+We will inspect the column structure to identify any missing values and obtain a summary of the numeric information for each column.
+
+The dataset provides a set of personal information for each client, including their age, occupation, number of years worked, civil status, etc. The variable 'default' indicates whether the credit was paid off or not. This indicator will be used as the objective variable.
+
+Some variables will require binarization, which will be represented using "1"s and "0"s.
+
+```{r }
+credit$default<-gsub(1,0,credit$default)
+credit$default<-gsub(2,1,credit$default)
+credit$dependents<-gsub(1,0,credit$dependents)
+credit$dependents<-gsub(2,1,credit$dependents)
+```
+
+## 2. Descriptive analysis
+
+It might interesting to do a visual analysis to see how is the data for each variable.
+
+```{r fig.height=10, fig.width=12}
+ggplotGrid(ncol = 4,
+  lapply(c("checking_balance", "credit_history", "purpose", "savings_balance", "employment_length", "personal_status", "other_debtors", "property", "installment_plan", "housing", "telephone", "foreign_worker", "job", "installment_rate","existing_credits", "residence_history"),
+    function(col) {
+        ggplot(credit, aes_string(col)) + geom_bar() + coord_flip()
+    }))
+```
+
+* The main "default" classifier shows failure in paying off credit , with "1" indicating missing payments, "0" meaning everything has been payed in time.
+
+* "installment.rate" reflects client payment reliability, with "4" being low reliability and "1" meaning consistent payments.
+
+* "dependents" indicates whether the individual has family to support, with "1" meaning they have dependents and "0" meaning no dependents.
+
+* "foreign_worker", "other_debtors", and "installment_plan" are not considered relevant to the analysis as most data falls into one category.
+
+The following quantitative variables will be studied: "months_loan_duration", "amount", and "age".
+
+```{r }
+hist(credit$months_loan_duration,xlab="Credit length (months)", ylab="Clients", main="Clients according to credit duration (in months)")
+hist(credit$amount,xlab="Importe", ylab="Clients", main="Clients according to credit amount")
+hist(credit$age,xlab="Age", ylab="Clients", main="Clients by age")
+```
+
+Data analysis shows that credit lengths primarily fall between 20-40 months, the majority of credits are considered low-quantity, and the average client age is around 25-30 years.
+
+To study possible outliers, boxplots of each variable are created.
+
+```{r }
+boxplot(credit$months_loan_duration, main="Credit duration (months)")
+boxplot(credit$amount, main="Amount of the credit given")
+boxplot(credit$age, main="Clients' age")
+```
+
+Outliers are observed in the upper part of the three boxplots, but are deemed acceptable values and will not be removed from the sample.
+
+## 3. Logistical regression (for variable selection) and Boruta
+
+To simplify the machine learning process, it is necessary to perform feature filtering. A logistic regression will be run to get an initial understanding of the importance of each variable in explaining default. The most significant variables, typically with a p-value of less than or equal to 0.05, will be selected. However, the threshold may be relaxed to 0.1 to include other borderline predictors. The initial selection will then be refined using the Boruta method, a variable selection algorithm.
+
+```{r }
+# Casting of specific columns to factors
+
+cols <- c("checking_balance", "credit_history", "purpose", "savings_balance", "employment_length","personal_status","other_debtors","property","installment_plan","housing","default","telephone","foreign_worker","job")
+
+credit[,cols] <- lapply(credit[,cols],as.factor)
+
+# Separation of objective variable from main dataframe
+
+default <- credit$default
+credit <- select(credit, -c(default))
+
+# Logistic regression
+
+credit$checking_balance <- factor(credit$checking_balance)
+glm.credit<- glm(default~., family=binomial, data=credit)
+summary(glm.credit)
+
+# Extraction of columns
+
+cols <- summary(glm.credit)$coeff[-1, 4] < 0.1 
+relevant.cols <- names(cols)[cols == TRUE]
+print(relevant.cols)
+```
+
+We now will feed Boruta with the predictors the logistical regression has found relevant to further filter them.
+
+```{r message=F, warning=F}
+
+cols_ <- c("checking_balance", "credit_history", "purpose", "savings_balance", "employment_length","personal_status","other_debtors","installment_plan","foreign_worker")
+
+credit <- credit[c(cols_)]
+
+# Boruta
+
+boruta.credit <- Boruta(default~., data = credit, doTrace = 2)
+```
+
+```{r }
+print(boruta.credit)
+
+par(mar=c(10,5,5,5)+.1)
+plot(boruta.credit, xlab= "", las=3)
+```
+
+The Boruta method was employed to identify the most important variables in the analysis. Its analysis is clear: we'll take the variables it flags as relevant and leave the rest out.
+
+## 4. Decision tree
+
+First, the data will be cleaned to retain only the relevant variables.
+
+```{r }
+cols__ <- c("checking_balance", "credit_history", "purpose", "savings_balance","other_debtors","installment_plan","foreign_worker")
+
+credit <- credit[c(cols__)] 
+```
+
+Next, a test-train model will be constructed, using 2/3 of the data for training and 1/3 for testing.
+
+```{r }
+set.seed(1432)
+y <- default
+x <- credit
+```
+
+The decision tree can now be generated.
+
+```{r fig.height=15, fig.width=18}
+split_prop <- 3
+max_split<-floor(nrow(x)/split_prop)
+tr_limit <- nrow(x)-max_split
+ts_limit <- nrow(x)-max_split+1
+
+trainx <- x[1:tr_limit,]
+trainy <- y[1:tr_limit]
+testx <- x[ts_limit+1:nrow(x),]
+testy <- y[ts_limit+1:nrow(x)]
+
+split_prop <- 3
+indexes = sample(1:nrow(credit), size=floor(((split_prop-1)/split_prop)*nrow(credit)))
+trainx<-x[indexes,]
+trainy<-y[indexes]
+testx<-x[-indexes,]
+testy<-y[-indexes]
+
+summary(testx)
+summary(testy)
+summary(trainx)
+summary(trainy)
+
+trainy = as.factor(trainy)
+model <- C50::C5.0(trainx, trainy,rules=TRUE )
+summary(model)
+
+model <- C50::C5.0(trainx, trainy)
+plot(model)
+```
+
+The error rate obtained was 21.5%, with 143 incorrect classifications out of 666 objects.
+
+To evaluate the model's accuracy, we will use the previously saved test data set.
+
+```{r }
+predicted_model <- predict( model, testx, type="class" )
+print(sprintf("The tree's precission is: %.4f %%",100*sum(predicted_model == testy) / length(predicted_model)))
+```
+
+The confusion matrix is the following.
+
+```{r }
+mat_conf<-table(testy,Predicted=predicted_model)
+mat_conf
+```
+
+## 5. Random Forest
+
+Random Forest is an algorithm of supervised learning, which builds a "forest" of decision trees, from a training set.
+
+Next, we will show how this algorithm can apply to this dataset. I'll first try to find the optimal parameters with a quick tuning and then run a random forest with them.
+
+```{r }
+
+# First generic Random Forest
+
+control <- trainControl(method="repeatedcv", number=10, repeats=3)
+seed <- 72
+metric <- "Accuracy"
+set.seed(seed)
+mtry <- sqrt(ncol(trainx))
+tunegrid <- expand.grid(.mtry=mtry)
+rf_default <- train(trainx, trainy, method="rf", metric=metric, tuneGrid=tunegrid, trControl=control)
+print(rf_default)
+```
+
+```{r }
+
+# Random Search
+
+control <- trainControl(method="repeatedcv", number=10, repeats=3, search="random")
+set.seed(seed)
+mtry <- sqrt(ncol(trainx))
+rf_random <- train(trainx, trainy, method="rf", metric=metric, tuneLength=7, trControl=control)
+print(rf_random)
+plot(rf_random)
+```
+
+```{r }
+
+# Random Forest
+
+rf <- randomForest(trainx, trainy, mtry = 2)
+predicted_rf <- predict(rf, testx, type="class" )
+print(sprintf("Random forest's accuracy is: %.4f %%",100*sum(predicted_rf == testy) / length(predicted_rf)))
+```
+
+## 6. Naive Bayes
+
+We will use a Naive-Bayes approach, which is a variation of the classical decision tree. It works as follows.
+
+```{r }
+modelb<-naiveBayes(trainx, trainy, proximity=T)
+modelb
+
+predicted_model2 <- predict(modelb, testx, type="class" )
+print(sprintf("The Bayesian Model's accuracy is: %.4f %%",100*sum(predicted_model2 == testy) / length(predicted_model2)))
+
+mat_conf2<-table(testy,Predicted=predicted_model2)
+mat_conf2
+```
+
+## 7. Logistic regression(prediction)
+
+We will use now a logistic regression for prediction.
+
+```{r }
+
+log_pred <- glm(trainy~., family=binomial, data=trainx)
+
+# Predicting
+pred_prob <- predict(log_pred, testx, type = "response")
+
+# Converting from probability to actual output
+test_actual <- ifelse(pred_prob >= 0.5, 1, 0)
+# Generating the classification table
+conf_mat <- table(testy, test_actual)
+conf_mat
+
+# Accuracy
+
+accuracy <- sum(diag(conf_mat))/sum(conf_mat)*100
+print(sprintf("Logistic regression's accuracy is: %.4f %%", accuracy))
+```
+
+## 8. Conclusions
+
+* The 4 models give a pretty similar accuracy, of around 70%. Other machine learning projects seen using the same dataset have a very similar indicator, so it can be assumed this is about the maximum accuracy we can get from applying this type of models.
+
+* To boost the indicators of any future Machine Learning project using this dataset, some measures can be implemented, such as the numerization and scaling of the different columns to test other edge-cutting algorithms suchg as LightGBM or neural networks. If the same cathegorical approach is followed (as in this project), bootstrapping could be an interesting approach as well. 
+
+* Another approach to the problem could be to deal with it as an unsupervised Machine Learning project, get some clusters and try to make predictions and association rules out of them with the algorithms here tried.
+
+## 9. Bibliography
+
+We get ideas for this analysis from the following sites.
+
+* https://www.r-bloggers.com/2018/01/understanding-naive-bayes-classifier-using-r/
+
+* https://www.youtube.com/watch?v=6EXPYzbfLCE&t=786s
+
+* https://machinelearningmastery.com/tune-machine-learning-algorithms-in-r/
+
+* https://thinkingneuron.com/german-credit-risk-classification-case-study-in-python/
+
