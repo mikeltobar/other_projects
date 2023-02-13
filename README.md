@@ -38,9 +38,10 @@ This work analyzes a time series that shows airline users with a monthly granula
 
 Once the data is decomposed, a prediction of the last two years of the data can be made, along with a possible spectrum of that prediction in terms of max and min values.
 
-
+![ts_prediction](https://user-images.githubusercontent.com/81832365/218500104-261e768a-f393-4cff-a4ae-11a24a24a7b3.png)
 
 ## Bibliography
 
 [1] Dua, D. and Graff, C. (2019). UCI Machine Learning Repository [http://archive.ics.uci.edu/ml]. Irvine, CA: University of California, School of Information and Computer Science.
 
+[2] Air Passengers [online] [accessed: 13 February 2023]. Available at: https://www.kaggle.com/datasets/rakannimer/air-passengers
